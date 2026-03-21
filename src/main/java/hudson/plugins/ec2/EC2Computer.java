@@ -180,6 +180,11 @@ public class EC2Computer extends SlaveComputer {
         if (ec2InstanceDescription == null) {
             ec2InstanceDescription = CloudHelper.getInstanceWithRetry(getInstanceId(), getCloud());
         }
+        if (ec2InstanceDescription == null) {
+            throw SdkException.builder()
+                    .message("Instance " + getInstanceId() + " not found (may be terminated)")
+                    .build();
+        }
         return ec2InstanceDescription;
     }
 
@@ -187,7 +192,13 @@ public class EC2Computer extends SlaveComputer {
      * This will flush any cached description held by {@link #describeInstance()}.
      */
     public Instance updateInstanceDescription() throws SdkException, InterruptedException {
-        return ec2InstanceDescription = CloudHelper.getInstanceWithRetry(getInstanceId(), getCloud());
+        ec2InstanceDescription = CloudHelper.getInstanceWithRetry(getInstanceId(), getCloud());
+        if (ec2InstanceDescription == null) {
+            throw SdkException.builder()
+                    .message("Instance " + getInstanceId() + " not found (may be terminated)")
+                    .build();
+        }
+        return ec2InstanceDescription;
     }
 
     /**
@@ -198,6 +209,11 @@ public class EC2Computer extends SlaveComputer {
      */
     public InstanceState getState() throws SdkException, InterruptedException {
         ec2InstanceDescription = CloudHelper.getInstanceWithRetry(getInstanceId(), getCloud());
+        if (ec2InstanceDescription == null) {
+            throw SdkException.builder()
+                    .message("Instance " + getInstanceId() + " not found (may be terminated)")
+                    .build();
+        }
         return InstanceState.find(ec2InstanceDescription.state().name().toString());
     }
 
