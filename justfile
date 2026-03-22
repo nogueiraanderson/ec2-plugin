@@ -1,7 +1,7 @@
 # EC2 Plugin for Jenkins - Build, Test & Deploy
 # Patched version with NPE guard to prevent ComputerRetentionWork timer death (Percona)
 
-version := "5.24.percona.1"
+version := "5.24.percona.2"
 image := "maven:3.9-eclipse-temurin-17"
 container := "ec2-build"
 m2_volume := "ec2-m2-cache"

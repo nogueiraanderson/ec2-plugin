@@ -110,6 +110,15 @@ public class EC2RetentionStrategy extends RetentionStrategy<EC2Computer> impleme
                 } else {
                     return CHECK_INTERVAL_MINUTES;
                 }
+            } catch (RuntimeException e) {
+                // Safety net: prevent ANY uncaught RuntimeException from killing the
+                // ComputerRetentionWork timer thread. Without this, a single misbehaving
+                // EC2 computer (NPE, IllegalArgumentException, etc.) permanently stops
+                // idle cleanup for ALL clouds on this Jenkins instance.
+                LOGGER.log(Level.WARNING, "Unexpected error during retention check for "
+                        + c.getName() + " (instanceId=" + c.getInstanceId()
+                        + "), will retry next cycle", e);
+                return CHECK_INTERVAL_MINUTES;
             } finally {
                 checkLock.unlock();
             }

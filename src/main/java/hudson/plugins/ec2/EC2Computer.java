@@ -98,7 +98,10 @@ public class EC2Computer extends SlaveComputer {
     public SlaveTemplate getSlaveTemplate() {
         EC2AbstractSlave node = getNode();
         if (node != null) {
-            return node.getCloud().getTemplate(node.templateDescription);
+            EC2Cloud cloud = node.getCloud();
+            if (cloud != null) {
+                return cloud.getTemplate(node.templateDescription);
+            }
         }
         return null;
     }
@@ -181,8 +184,10 @@ public class EC2Computer extends SlaveComputer {
             ec2InstanceDescription = CloudHelper.getInstanceWithRetry(getInstanceId(), getCloud());
         }
         if (ec2InstanceDescription == null) {
+            LOGGER.warning("describeInstance returned null for " + getName()
+                    + " (instanceId=" + getInstanceId() + "), node or cloud may be detached");
             throw SdkException.builder()
-                    .message("Instance " + getInstanceId() + " not found (may be terminated)")
+                    .message("Instance " + getInstanceId() + " not found (node or cloud detached)")
                     .build();
         }
         return ec2InstanceDescription;
@@ -194,8 +199,10 @@ public class EC2Computer extends SlaveComputer {
     public Instance updateInstanceDescription() throws SdkException, InterruptedException {
         ec2InstanceDescription = CloudHelper.getInstanceWithRetry(getInstanceId(), getCloud());
         if (ec2InstanceDescription == null) {
+            LOGGER.warning("updateInstanceDescription returned null for " + getName()
+                    + " (instanceId=" + getInstanceId() + "), node or cloud may be detached");
             throw SdkException.builder()
-                    .message("Instance " + getInstanceId() + " not found (may be terminated)")
+                    .message("Instance " + getInstanceId() + " not found (node or cloud detached)")
                     .build();
         }
         return ec2InstanceDescription;
@@ -210,18 +217,42 @@ public class EC2Computer extends SlaveComputer {
     public InstanceState getState() throws SdkException, InterruptedException {
         ec2InstanceDescription = CloudHelper.getInstanceWithRetry(getInstanceId(), getCloud());
         if (ec2InstanceDescription == null) {
+            LOGGER.warning("Instance lookup returned null for " + getName()
+                    + " (instanceId=" + getInstanceId() + "), node or cloud may be detached");
             throw SdkException.builder()
-                    .message("Instance " + getInstanceId() + " not found (may be terminated)")
+                    .message("Instance " + getInstanceId() + " not found (node or cloud detached)")
                     .build();
         }
-        return InstanceState.find(ec2InstanceDescription.state().name().toString());
+        if (ec2InstanceDescription.state() == null) {
+            LOGGER.warning("Instance " + getInstanceId() + " has null state (degraded AWS API response)");
+            throw SdkException.builder()
+                    .message("Instance " + getInstanceId() + " has null state")
+                    .build();
+        }
+        try {
+            return InstanceState.find(ec2InstanceDescription.state().name().toString());
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning("Instance " + getInstanceId() + " has unknown state: "
+                    + ec2InstanceDescription.state().name());
+            throw SdkException.builder()
+                    .message("Instance " + getInstanceId() + " has unknown state: "
+                            + ec2InstanceDescription.state().name())
+                    .cause(e)
+                    .build();
+        }
     }
 
     /**
      * Number of milli-secs since the instance was started.
      */
     public long getUptime() throws SdkException, InterruptedException {
-        return describeInstance().launchTime().until(Instant.now(), ChronoUnit.MILLIS);
+        Instant lt = describeInstance().launchTime();
+        if (lt == null) {
+            throw SdkException.builder()
+                    .message("Instance " + getInstanceId() + " has no launchTime (may be pending)")
+                    .build();
+        }
+        return lt.until(Instant.now(), ChronoUnit.MILLIS);
     }
 
     /**
@@ -236,8 +267,14 @@ public class EC2Computer extends SlaveComputer {
      *
      * @return Instant this instance was launched
      */
-    public Instant getLaunchTime() throws InterruptedException {
-        return this.describeInstance().launchTime();
+    public Instant getLaunchTime() throws SdkException, InterruptedException {
+        Instant lt = this.describeInstance().launchTime();
+        if (lt == null) {
+            throw SdkException.builder()
+                    .message("Instance " + getInstanceId() + " has no launchTime (may be pending)")
+                    .build();
+        }
+        return lt;
     }
 
     /**
