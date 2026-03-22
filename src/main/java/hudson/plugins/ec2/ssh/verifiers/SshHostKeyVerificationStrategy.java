@@ -108,7 +108,7 @@ public abstract class SshHostKeyVerificationStrategy implements Describable<SshH
                                 + " is not running, waiting to validate the key against the console");
             }
         } catch (InterruptedException | SdkException e) {
-            LOGGER.log(Level.FINE, "Could not get state for " + computer.getName() + " during host key verification", e);
+            logger.log(Level.FINE, "Could not get state for " + computer.getName() + " during host key verification", e);
             return null;
         }
 
