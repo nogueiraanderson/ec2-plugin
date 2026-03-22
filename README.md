@@ -1,4 +1,88 @@
-# ec2-plugin
+# ec2-plugin (Percona fork)
+
+Patched fork of [jenkinsci/ec2-plugin](https://github.com/jenkinsci/ec2-plugin)
+with fixes to prevent the `ComputerRetentionWork` timer from dying permanently.
+
+## Percona patches (branch `fix/crw-npe-guard`)
+
+Based on upstream v5.24. Current version: **5.24.percona.2**.
+
+### The problem
+
+A single `NullPointerException` in `EC2Computer.getState()` kills the Jenkins
+`ComputerRetentionWork` periodic timer permanently. Once dead, no idle worker
+cleanup fires for ANY cloud (EC2 or Hetzner) until JVM restart. On
+`pxc.cd.percona.com` this left 24 Hetzner rogue workers running for 47 hours.
+
+Root cause: `CloudHelper.getInstanceWithRetry()` returns null when the EC2
+instance is terminated or the Jenkins node is detached. The return value was
+dereferenced without a null check.
+
+### Fixes applied
+
+| Fix | File | Description |
+|-----|------|-------------|
+| 0 | EC2Computer.java | Null guard in `getState()` -- NPE to SdkException |
+| 1 | EC2Computer.java | Null guard in `getSlaveTemplate()` -- `getCloud()` can return null |
+| 2 | EC2Computer.java | Null guard in `getUptime()`/`getLaunchTime()` -- null `launchTime` |
+| 3 | EC2Computer.java | `IllegalArgumentException` guard in `getState()` -- unknown AWS state |
+| 4 | EC2Computer.java | Null guard for `instance.state()` -- degraded AWS API response |
+| 5 | EC2RetentionStrategy.java | `RuntimeException` safety net in `check()` -- belt-and-suspenders |
+| 6 | SshHostKeyVerificationStrategy.java | Catch `SdkException` alongside `InterruptedException` |
+
+All fixes convert uncaught `RuntimeException`s into caught `SdkException`s or
+log-and-continue patterns. Fix 5 is the safety net: even if a new bug appears
+in the future, it cannot kill the CRW timer.
+
+### Version history
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 5.24.percona.1 | 2026-03-22 | Fix 0: null guard in getState/describeInstance/updateInstanceDescription |
+| 5.24.percona.2 | 2026-03-22 | Fixes 1-6: comprehensive CRW protection, logging, startup banner |
+
+### Build and deploy
+
+Requires Docker (Maven 3.9 + JDK 17 image). Uses `just` task runner.
+
+```bash
+# Build HPI (skips tests)
+just build
+
+# Run tests
+just test
+
+# Deploy to a single instance
+just deploy pxc
+
+# Deploy to all 10 instances
+just deploy-all
+
+# Check versions across fleet
+just check
+
+# Create GitHub release
+just release
+```
+
+### Verification
+
+```bash
+# CRW timer health across all instances
+jenkins hetzner crw-health
+
+# EC2 workers with status classification
+jenkins ec2 --all get
+
+# State machine simulation (demonstrates all bugs and fixes)
+javac CrwNpeDemo.java && java CrwNpeDemo
+javac CrwStateMachine.java && java CrwStateMachine
+```
+
+---
+
+## Upstream README
+
 [![Jenkins](https://ci.jenkins.io/job/Plugins/job/ec2-plugin/job/master/badge/icon)](https://ci.jenkins.io/job/Plugins/job/ec2-plugin/job/master/)
 [![Jenkins Plugin](https://img.shields.io/jenkins/plugin/v/ec2.svg)](https://plugins.jenkins.io/ec2)
 [![GitHub release](https://img.shields.io/github/release/jenkinsci/ec2-plugin.svg?label=changelog)](https://github.com/jenkinsci/ec2-plugin/releases/latest)
