@@ -16,7 +16,7 @@ build:
     docker create --name {{container}} -w /plugin \
         -v {{m2_volume}}:/root/.m2/repository \
         {{image}} \
-        mvn clean package -DskipTests -Drevision={{version}}
+        mvn clean package -DskipTests -Dchangelist={{version}}
     docker cp "$(pwd)/." {{container}}:/plugin
     docker start -a {{container}}
     docker cp {{container}}:/plugin/target/ec2.hpi ./ec2-{{version}}.hpi
@@ -32,7 +32,7 @@ test:
     docker create --name {{container}} -w /plugin \
         -v {{m2_volume}}:/root/.m2/repository \
         {{image}} \
-        mvn clean verify -Drevision={{version}}
+        mvn clean verify -Dchangelist={{version}}
     docker cp "$(pwd)/." {{container}}:/plugin
     docker start -a {{container}}
     docker rm {{container}}
