@@ -1261,7 +1261,9 @@ public class EC2Cloud extends Cloud {
         if (useInstanceProfileForCredentials) {
             return InstanceProfileCredentialsProvider.create();
         } else if (StringUtils.isBlank(credentialsId)) {
-            return DefaultCredentialsProvider.builder().build();
+            // Try IRSA (EKS web identity) first, fall back to default chain
+            AwsCredentialsProvider irsaProvider = tryCreateWebIdentityProvider();
+            return irsaProvider != null ? irsaProvider : DefaultCredentialsProvider.builder().build();
         } else {
             AmazonWebServicesCredentials credentials = getCredentials(credentialsId);
             if (credentials != null) {
@@ -1274,6 +1276,33 @@ public class EC2Cloud extends Cloud {
             }
         }
         return DefaultCredentialsProvider.builder().build();
+    }
+
+    /**
+     * Attempt to create a WebIdentityTokenFileCredentialsProvider for EKS IRSA.
+     * Returns null if the required environment variables are not set (not on EKS)
+     * or if the STS classes are not available.
+     */
+    @CheckForNull
+    private static AwsCredentialsProvider tryCreateWebIdentityProvider() {
+        String roleArn = System.getenv("AWS_ROLE_ARN");
+        String tokenFile = System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE");
+        if (roleArn == null || tokenFile == null) {
+            return null;
+        }
+        try {
+            return software.amazon.awssdk.services.sts.auth.StsWebIdentityTokenFileCredentialsProvider.builder()
+                    .roleArn(roleArn)
+                    .webIdentityTokenFile(java.nio.file.Paths.get(tokenFile))
+                    .stsClient(software.amazon.awssdk.services.sts.StsClient.builder()
+                            .region(software.amazon.awssdk.regions.Region.of(
+                                    System.getenv("AWS_REGION") != null ? System.getenv("AWS_REGION") : "us-east-1"))
+                            .build())
+                    .build();
+        } catch (Exception e) {
+            LOGGER.warning("Failed to create IRSA WebIdentityTokenFileCredentialsProvider: " + e.getMessage());
+            return null;
+        }
     }
 
     public static AwsCredentialsProvider createCredentialsProvider(
