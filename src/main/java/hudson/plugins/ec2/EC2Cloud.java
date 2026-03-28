@@ -494,14 +494,19 @@ public class EC2Cloud extends Cloud {
             // ITERATE ON EXISTING CREDS AND DON'T CREATE IF EXIST
             for (Credentials credentials : systemCredentialsProvider.getCredentials()) {
                 if (credentials instanceof AmazonWebServicesCredentials awsCreds) {
-                    AwsCredentials awsCredentials = awsCreds.resolveCredentials();
-                    if (accessId.equals(awsCredentials.accessKeyId())
-                            && Secret.toString(this.secretKey).equals(awsCredentials.secretAccessKey())) {
+                    try {
+                        AwsCredentials awsCredentials = awsCreds.resolveCredentials();
+                        if (accessId.equals(awsCredentials.accessKeyId())
+                                && Secret.toString(this.secretKey).equals(awsCredentials.secretAccessKey())) {
 
-                        this.credentialsId = awsCreds.getId();
-                        this.accessId = null;
-                        this.secretKey = null;
-                        return this;
+                            this.credentialsId = awsCreds.getId();
+                            this.accessId = null;
+                            this.secretKey = null;
+                            return this;
+                        }
+                    } catch (Exception e) {
+                        LOGGER.fine("Skipping credential '" + awsCreds.getId()
+                                + "' during migration: " + e.getMessage());
                     }
                 }
             }
@@ -1260,7 +1265,12 @@ public class EC2Cloud extends Cloud {
         } else {
             AmazonWebServicesCredentials credentials = getCredentials(credentialsId);
             if (credentials != null) {
-                return StaticCredentialsProvider.create(credentials.resolveCredentials());
+                try {
+                    return StaticCredentialsProvider.create(credentials.resolveCredentials());
+                } catch (Exception e) {
+                    LOGGER.warning("Failed to resolve credentials '" + credentialsId
+                            + "', falling back to default provider chain: " + e.getMessage());
+                }
             }
         }
         return DefaultCredentialsProvider.builder().build();
